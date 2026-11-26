@@ -87,12 +87,51 @@ flowchart LR
 
 Nginx nhận HTTP ở cổng `80` và chuyển request đến `agent:8000`. Compose khởi động Agent khi Redis và Qdrant đạt health check. Hai nhánh `depends_on` thể hiện điều kiện khởi động. Endpoint `/ask` dùng mock LLM. [Compose](02-docker/production/docker-compose.yml#L22-L47) · [Nginx](02-docker/production/nginx/nginx.conf#L14-L28) · [Handler `/ask`](02-docker/production/main.py#L57-L64)
 
-Các image phụ thuộc được tải riêng sau lỗi Docker Hub `429`. Compose dùng lại image runtime đã build ở Exercise 2.3. `docker compose ps` ghi nhận Agent, Redis và Qdrant ở trạng thái `healthy`, còn Nginx ở trạng thái `Up` và công bố cổng `80`.
+`docker compose ps` ghi nhận Agent, Redis và Qdrant ở trạng thái `healthy`, còn Nginx ở trạng thái `Up` và công bố cổng `80`.
 
 | Request qua `localhost:80` | Phản hồi |
 | --- | --- |
 | `GET /health` | `200 OK`, `Server: nginx`, `status=ok`, `version=2.0.0`. |
 | `POST /ask` với `{"question":"Explain microservices"}` | `200 OK`, `Server: nginx`, trường `answer` chứa câu trả lời mock. |
+
+## Part 3: Cloud Deployment
+
+### Exercise 3.2: Render deployment
+
+Triển khai agent Part 6 qua Blueprint [`06-lab-complete/render.yaml`](06-lab-complete/render.yaml). Cấu hình khai báo Web Service `day14-agent` chạy bằng Docker và Key Value `day14-redis`, cùng dùng gói Free tại Singapore. `REDIS_URL` tham chiếu kết nối nội bộ của Key Value; `AGENT_API_KEY` được nhập trên Render.
+
+URL public: **https://day14-agent-c14l.onrender.com**. Kiểm thử HTTPS ngày 26/11/2026 đạt đủ bốn trường hợp yêu cầu ở CP6. Lệnh chạy, thời điểm và kết quả được tổng hợp trong [`DEPLOYMENT.md`](DEPLOYMENT.md).
+
+| Phép thử | Yêu cầu | Kết quả thực tế |
+| --- | --- | --- |
+| `GET /health` | `200` | `200`, `{"status":"ok"}`. |
+| `GET /ready` | `200` | `200`, `{"ready":true}`. |
+| `POST /ask`, thiếu key | `401` | `401`, `Missing or invalid API key`. |
+| `POST /ask`, đúng key | `200` | `200`, JSON có `question: "Hello"` và `answer` chứa câu trả lời mock. |
+
+Ảnh bằng chứng: [Dashboard](screenshots/dashboard.png) · [Agent Live](screenshots/running.png) · [Kiểm thử API](screenshots/test.png).
+
+### Exercise 3.1–3.2: Configuration comparison
+
+| Nội dung | `railway.toml` | `render.yaml` |
+| --- | --- | --- |
+| Định dạng | TOML. | YAML. |
+| Build Agent | Chọn builder `DOCKERFILE`. | Chọn `runtime: docker`, root directory `06-lab-complete` và `./Dockerfile`. |
+| Health check | `healthcheckPath = "/health"`. | `healthCheckPath: /health`. |
+| Redis | File hiện tại không khai báo Redis; cần tạo service và đặt biến kết nối trên nền tảng. | Blueprint khai báo Key Value và truyền `REDIS_URL` qua `fromService` với `property: connectionString`. |
+| API key | Đặt bằng biến môi trường trên nền tảng. | `sync: false` yêu cầu nhập giá trị khi tạo Blueprint. |
+| Phạm vi cấu hình | Build và health check của Agent. | Agent, Key Value, vùng Singapore, gói Free và các biến môi trường. |
+
+Hai cấu hình đều sử dụng Dockerfile và endpoint `/health`. Blueprint Render mô tả thêm các tài nguyên và liên kết giữa chúng, giúp triển khai Agent cùng Redis từ một file. Cấu hình Railway được giữ để đối chiếu; nền tảng triển khai chính là Render. [Railway](06-lab-complete/railway.toml) · [Render](06-lab-complete/render.yaml)
+
+### Exercise 3.3: Cloud Run pipeline
+
+1. `cloudbuild.yaml` bắt đầu bằng cài dependency và chạy `pytest tests/`.
+2. Bước build tạo Docker image với tag `$COMMIT_SHA` và `latest`, sau đó bước push đưa image lên registry.
+3. Bước deploy dùng image theo commit để triển khai Cloud Run tại `asia-southeast1`, kèm cấu hình tài nguyên, scaling và tham chiếu secret.
+4. `service.yaml` mô tả service với cổng `8000`, concurrency `80`, giới hạn instance, tài nguyên, biến môi trường và probes `/health`, `/ready`.
+
+[Pipeline](03-cloud-deployment/production-cloud-run/cloudbuild.yaml) · [Service definition](03-cloud-deployment/production-cloud-run/service.yaml)
 
 ## Part 4: API Security
 
@@ -183,7 +222,7 @@ Instances used: {'instance-52790e', 'instance-6dc179', 'instance-a2ff1f'}
 Total messages: 10
 ```
 
-Phép thử bổ sung khi dừng một Agent ghi nhận truy vấn qua Nginx hết thời gian chờ 8 giây, trong khi Agent còn chạy vẫn đọc được đủ 10 message từ Redis. Sau khi reload Nginx, truy vấn và lượt chat tiếp theo trả `200`, lịch sử cùng session tăng lên 12 message.
+Khi dừng một Agent, instance còn lại vẫn đọc được đủ 10 message từ Redis. Với upstream tĩnh `server agent:8000` trong cấu hình Nginx mẫu, truy vấn qua proxy chưa hoàn tất trong thời hạn kiểm tra. Sau khi reload Nginx, request trả `200` và lịch sử cùng session tăng lên 12 message. Kết quả xác nhận state được giữ độc lập với instance; cấu hình proxy mẫu còn hạn chế khi cập nhật các đích upstream.
 
 ## Part 6: Final Project
 
@@ -193,7 +232,7 @@ Phép thử bổ sung khi dừng một Agent ghi nhận truy vấn qua Nginx h�
 - **Xác thực và giới hạn.** `/ask` trả `401` khi thiếu hoặc sai `X-API-Key`. Rate limiter dùng sorted set và script nguyên tử trong Redis để các worker chia sẻ cửa sổ 60 giây. Script chấm xác nhận Agent vẫn trả `429` sau khi restart vì trạng thái quota còn trong Redis. [Auth](06-lab-complete/app/auth.py) · [Rate limiter](06-lab-complete/app/rate_limiter.py)
 - **Cost guard.** App dùng ngân sách chung 1 USD/ngày UTC, cấu hình qua `DAILY_BUDGET_USD`. Trước mỗi lượt, app đọc tổng chi phí đã ghi nhận và trả `402` khi chạm ngưỡng. Sau khi mock LLM hoàn tất, app ước tính hai token cho mỗi từ và cộng chi phí vào Redis. [Cost guard](06-lab-complete/app/cost_guard.py) · [Luồng `/ask`](06-lab-complete/app/main.py#L96-L103)
 - **Log và shutdown.** App ghi mỗi sự kiện dưới dạng một JSON object. Uvicorn hoàn tất request đang chạy khi nhận `SIGTERM`, rồi lifespan đóng Redis. Docker chạy Uvicorn ở PID 1 bằng `exec`. [Lifespan](06-lab-complete/app/main.py) · [Dockerfile](06-lab-complete/Dockerfile)
-- **Đóng gói.** Image multi-stage dùng base slim và chạy non-root. `.dockerignore` loại secret, cache và virtualenv khỏi build context. Compose khởi động Agent cùng Redis. Dockerfile đọc `PORT`, còn cấu hình Railway chọn builder `DOCKERFILE` và health check `/health`. URL public được kiểm tra ở CP6. [Dockerfile](06-lab-complete/Dockerfile) · [Docker ignore](06-lab-complete/.dockerignore) · [Compose](06-lab-complete/docker-compose.yml) · [Railway](06-lab-complete/railway.toml)
+- **Đóng gói.** Image multi-stage dùng base slim và chạy non-root. `.dockerignore` loại secret, cache và virtualenv khỏi build context. Compose khởi động Agent cùng Redis. Dockerfile đọc `PORT`; Blueprint Render khai báo Agent, Key Value và health check `/health`. URL public được kiểm tra ở CP6. [Dockerfile](06-lab-complete/Dockerfile) · [Docker ignore](06-lab-complete/.dockerignore) · [Compose](06-lab-complete/docker-compose.yml) · [Render](06-lab-complete/render.yaml)
 
 ### Manual test results
 
@@ -212,7 +251,7 @@ Log request của ứng dụng ghi các trường `ts`, `lvl`, `event`, `method`
 
 ### Checklist Deliverable
 
-Chạy `python check_production_ready.py` trong `06-lab-complete/` với Docker. Script đo image **273 MB** và `docker stop` thoát mã `0` sau **0,9 giây**.
+Kiểm tra tại CP5 bằng `python check_production_ready.py` trong `06-lab-complete/` với Docker đạt **PASS 12/12**. Script đo image **273 MB** và `docker stop` thoát mã `0` sau **0,9 giây**.
 
 ```text
 ================================================================
@@ -238,7 +277,8 @@ Chạy `python check_production_ready.py` trong `06-lab-complete/` với Docker.
 ## AI log
 
 - **CP1** — Học viên thực hành CP1 trước khi dùng AI. Codex hỗ trợ rà tiêu chí K5, đối chiếu các dòng code minh họa anti-pattern và biên tập bảng so sánh. Trích đoạn HTTP trong báo cáo lấy từ lượt Codex chạy lại hai app mẫu để đối chiếu.
-- **CP2** — Học viên build và đo kích thước hai image, chạy Compose và kiểm tra `/health` cùng `/ask` qua Nginx. Codex hỗ trợ đọc Dockerfile và Compose, phân tích lỗi `429`, tải riêng ba image phụ thuộc và biên tập Part 2 dựa trên kết quả học viên cung cấp.
+- **CP2** — Học viên build và đo kích thước hai image, chạy Compose và kiểm tra `/health` cùng `/ask` qua Nginx. Codex hỗ trợ đọc Dockerfile và Compose, hướng dẫn vận hành stack và biên tập Part 2 dựa trên kết quả học viên cung cấp.
 - **CP3** — Học viên kiểm tra API key, lấy JWT, chạy vòng lặp để quan sát `429` và xem kết quả `/me/usage`. Codex hỗ trợ giải thích các câu hỏi, chạy đối chiếu riêng và biên tập Part 4 từ kết quả học viên cung cấp. Lượt đối chiếu có kiểm tra nhánh `402` bằng số token LLM giả lập.
 - **CP4** — Học viên chạy health check, gửi `SIGTERM` khi request đang xử lý, bật stack ba Agent và kiểm tra lịch sử bằng `test_stateless.py`. Codex hỗ trợ đọc mã mẫu, giải thích kết quả và biên tập Part 5 từ output học viên cung cấp. Phép thử dừng một Agent được thực hiện trong lượt đối chiếu riêng của Codex.
 - **CP5** — Học viên triển khai Part 6 từ bản khung với sự hỗ trợ của Codex về code và cấu hình theo từng tiêu chí lab. Học viên trực tiếp chạy Compose, kiểm tra health/readiness, API key, input rỗng, rate limit, log JSON và trạng thái khi dừng Redis, sau đó chạy script chấm đầy đủ xác nhận `PASS 12/12`. Codex hỗ trợ giải thích luồng xử lý, chạy đối chiếu và biên tập Part 6 từ kết quả thực hành.
+- **CP6** — Học viên tạo tài khoản Render, thiết lập API key, triển khai Blueprint từ repo đã push, kiểm thử `/ask` có key và chụp ba ảnh bằng chứng. Request trả `HTTP 200` cùng câu trả lời mock. Codex hỗ trợ cấu hình Blueprint, giải thích kết nối Agent/Redis, chạy đối chiếu endpoint và script chấm sau deploy, rà ảnh và biên tập kết quả cùng phần so sánh cấu hình, pipeline Cloud Run. API key được nhập và giữ trên máy học viên.
