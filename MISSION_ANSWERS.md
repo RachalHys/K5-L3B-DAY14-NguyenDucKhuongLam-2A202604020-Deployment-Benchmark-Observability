@@ -179,7 +179,7 @@ content-type: application/json
 ### Exercise 4.4: Cost guard implementation
 
 - **Mẫu hiện tại.** App kiểm tra chi phí đã dùng trước khi gọi LLM và ghi nhận chi phí theo số token đầu vào, đầu ra sau khi có kết quả. Usage theo user và ngày được giữ trong RAM. Khi user chạm mức 1 USD/ngày, app trả `402`. Khi tổng chi phí chạm ngưỡng 10 USD, app trả `503`. [Luồng `/ask`](04-api-gateway/production/app.py#L144-L153) · [Cost guard](04-api-gateway/production/cost_guard.py#L39-L110)
-- **Thiết kế Redis cho hạn mức tháng.** Dùng key `budget:{user_id}:{YYYY-MM}` để lưu chi phí theo user, với hạn mức 10 USD/tháng. Trước khi gọi LLM, kiểm tra và giữ chỗ chi phí ước tính bằng một thao tác nguyên tử. Sau khi có kết quả, đối soát theo số token và hoàn phần giữ chỗ còn dư. Sang tháng mới dùng key mới, đặt TTL để dọn key cũ.
+- **Thiết kế Redis cho hạn mức tháng.** Dùng key `budget:{user_id}:{YYYY-MM}` theo tháng UTC. Trước khi gọi LLM, một script Redis đọc số tiền đã dùng, từ chối nếu cộng thêm chi phí ước tính sẽ vượt 10 USD, hoặc cộng khoản giữ chỗ và cho phép request. Kiểm tra và cập nhật trong cùng một thao tác giúp các worker tránh cấp trùng ngân sách. Sau khi có kết quả, đối soát chi phí theo số token thực tế và hoàn phần giữ chỗ còn dư. Sang tháng mới dùng key mới. TTL chỉ dùng để dọn key cũ.
 - **Kết quả kiểm tra.** Sau vòng lặp, `GET /me/usage` ghi nhận 10 request đã xử lý, 60 token đầu vào, 300 token đầu ra và chi phí mock `0.000189` USD. Trong phép thử đối chiếu cô lập, ghi nhận số token giả lập tương ứng 1,20 USD vào `CostGuard` khiến lần kiểm tra tiếp theo trả `402`.
 
 Rate limit kiểm soát tần suất gọi. Cost guard kiểm soát tổng tiền vì các request có thể dùng số token khác nhau dù có cùng tần suất.
@@ -214,7 +214,7 @@ Stack `k5-day14-scaling` chạy với `--scale agent=3`. `docker compose ps` ghi
 
 **5.5 — Test stateless**
 
-Chạy `python test_stateless.py` qua Nginx ở `localhost:8080`. Cả ba Agent xử lý các lượt khác nhau trong cùng một session. Truy vấn lịch sử trả đủ 5 câu hỏi và 5 câu trả lời theo thứ tự, cho thấy các Agent đọc và ghi cùng dữ liệu session trong Redis. [Script kiểm tra](05-scaling-reliability/production/test_stateless.py#L49-L82)
+Chạy `python test_stateless.py` qua Nginx ở `localhost:8080`. Request `POST /chat` đầu tiên tạo session, bốn request sau dùng lại `session_id` vừa nhận. Cả ba Agent xử lý các lượt khác nhau. Truy vấn lịch sử trả đủ 5 câu hỏi và 5 câu trả lời theo thứ tự, cho thấy các Agent đọc và ghi cùng dữ liệu session trong Redis. [Script kiểm tra](05-scaling-reliability/production/test_stateless.py#L49-L82)
 
 ```text
 Total requests: 5

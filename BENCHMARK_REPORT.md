@@ -128,14 +128,14 @@ Mỗi lượt chạy với 30 user và 2 replica. Thời gian tính từ lúc b�
 
 ## 5. Benchmark scaling (production, Locust headless, 100 users, 2 phút)
 
-Hai lượt chạy dùng 100 user, tăng 10 user/giây trong 2 phút và cùng cấu hình mock mặc định. Bảng lấy dòng `Aggregated` trong CSV của Locust, gồm cả `/ask` và `/health`.
+Hai lượt chạy trong 2 phút với 100 user, tăng 10 user/giây. Cả hai dùng v2, `mock-llm-small`, độ trễ cơ sở 120 ms, tỷ lệ chậm 3% và tỷ lệ lỗi 1%. Bảng lấy dòng `Aggregated` trong CSV của Locust, gồm cả `/ask` và `/health`.
 
 | Số instance | RPS | p50 (ms) | p95 (ms) | p99 (ms) | Failures |
 |---|---|---|---|---|---|
 | [1](benchmark-results/scale_1_stats.csv) | 63,52 | 210 | 980 | 1.800 | 63/7.402 (0,85%) |
 | [3](benchmark-results/scale_3_stats.csv) | 66,94 | 190 | 230 | 1.700 | 75/7.847 (0,96%) |
 
-**Nhận xét.** Tăng từ 1 lên 3 replica giảm p95 từ 980 ms xuống 230 ms. Riêng `/ask`, p95 giảm từ 1.100 ms xuống 230 ms. Kết quả phù hợp với việc chia tải giữa các Agent, giảm thời gian chờ xử lý khi có nhiều request đồng thời. RPS chỉ tăng từ 63,52 lên 66,94 vì Locust giữ 100 user và có thời gian nghỉ giữa các lượt. p99 vẫn ở mức 1.700 ms. Trace chậm cho thấy lời gọi mock LLM là phần chiếm nhiều thời gian nhất trong ca được kiểm tra.
+**Nhận xét.** Tăng từ 1 lên 3 replica giảm p95 từ 980 ms xuống 230 ms. Riêng `/ask`, p95 giảm từ 1.100 ms xuống 230 ms, phù hợp với việc chia tải giữa các Agent. RPS tăng từ 63,52 lên 66,94 ở mức tải cố định này. Locust có 100 user và mỗi user nghỉ 0,5–2 giây giữa các tác vụ, nên phép đo chỉ cho biết throughput ứng với cấu hình tải đã chạy. p99 vẫn khoảng 1,7 giây. Trong trace chậm đã đối chiếu, lời gọi mock LLM chiếm phần lớn thời gian xử lý.
 
 ---
 
