@@ -1,7 +1,6 @@
 # Part 6 — Final Project: Production-ready AI Agent
 
-Bạn tự xây một AI agent đủ chuẩn production từ **bản khung** trong thư mục này, kết hợp mọi thứ đã học ở Part 1–5.
-Mọi file đều đã có sẵn, phần việc của bạn nằm ở các chỗ ghi `TODO`. Bản khung chạy được nhưng **chưa đạt tiêu chí nào**.
+Part 6 kết hợp FastAPI, mock LLM, Redis và Docker thành một agent production-ready theo hợp đồng của lab.
 
 Bài chỉ được tính hoàn thành khi script chấm báo **`PASS 12/12`**:
 
@@ -50,26 +49,28 @@ Script tự khởi động agent của bạn, gọi API thật, build và chạy
 | `.dockerignore` | Loại trừ `.env`, `__pycache__`, `venv` |
 | Deploy config | `railway.toml` (builder `DOCKERFILE`, `healthcheckPath = "/health"`) **hoặc** `render.yaml` (`type: web`, `healthCheckPath: /health`, secret dùng `generateValue` / `sync: false`) |
 
+Redis client dùng I/O bất đồng bộ để đặt thời hạn kết nối bao gồm cả bước phân giải tên. Cost guard dùng ngân sách chung theo ngày UTC. App kiểm tra số tiền đã ghi nhận trước mỗi lượt và cộng chi phí khi lượt đó hoàn tất. Các lượt đã được nhận vẫn được xử lý và ghi phí.
+
 ---
 
-## Bản khung
+## Thành phần
 
 ```
 06-lab-complete/
 ├── app/
-│   ├── main.py           # TODO: /health, /ready, nối auth + rate limit + cost guard vào /ask, log JSON, shutdown
-│   ├── config.py         # TODO: đọc cấu hình từ biến môi trường
-│   ├── auth.py           # TODO: verify_api_key → 401
-│   ├── rate_limiter.py   # TODO: check_rate_limit → 429 (Redis)
-│   ├── cost_guard.py     # TODO: check_budget → 402, record_cost (Redis)
-│   └── redis_client.py   # TODO: kết nối Redis + redis_healthy() cho /ready
+│   ├── main.py           # Endpoint, log JSON và lifespan
+│   ├── config.py         # Cấu hình từ biến môi trường
+│   ├── auth.py           # Xác thực X-API-Key
+│   ├── rate_limiter.py   # Cửa sổ trượt trong Redis
+│   ├── cost_guard.py     # Chi phí theo ngày UTC trong Redis
+│   └── redis_client.py   # Redis client và kiểm tra readiness
 ├── utils/mock_llm.py     # Mock LLM — có sẵn, không cần sửa
-├── Dockerfile            # TODO: viết lại thành multi-stage production
-├── docker-compose.yml    # TODO: thêm redis
-├── .dockerignore         # TODO
-├── .env.example          # TODO: liệt kê đủ biến
-├── railway.toml          # TODO (hoặc render.yaml)
-├── render.yaml           # TODO (hoặc railway.toml)
+├── Dockerfile            # Multi-stage, non-root, chạy 2 worker
+├── docker-compose.yml    # Agent và Redis
+├── .dockerignore         # Loại secret và file ngoài build context
+├── .env.example          # Mẫu biến môi trường
+├── railway.toml          # Cấu hình Railway để đối chiếu
+├── render.yaml           # Blueprint Render Free cho Agent và Redis
 ├── requirements.txt      # Có sẵn
 ├── check_production_ready.py   # Script chấm — không sửa
 └── benchmark-observability/    # Part 7 — làm sau khi xong Part 6
@@ -83,19 +84,20 @@ Script tự khởi động agent của bạn, gọi API thật, build và chạy
 
 ```bash
 pip install -r requirements.txt
-cp .env.example .env
 
-# Chạy nhanh không cần Docker (cần Redis riêng nếu muốn test rate limit thật)
-AGENT_API_KEY=dev-key uvicorn app.main:app --reload
-
-# Chạy cả agent + redis
-docker compose up --build
+# Chạy agent và Redis với key thử tại máy local
+AGENT_API_KEY=dev-key docker compose up --build --wait
 
 curl http://localhost:8000/health
+curl http://localhost:8000/ready
 curl -X POST http://localhost:8000/ask \
      -H "X-API-Key: dev-key" -H "Content-Type: application/json" \
      -d '{"question": "What is deployment?"}'
+
+docker compose down
 ```
+
+Để chạy trực tiếp với Redis đã có sẵn trên máy, dùng `AGENT_API_KEY=dev-key REDIS_URL=redis://localhost:6379/0 uvicorn app.main:app --workers 2`. Có thể dùng `.env.example` làm mẫu tạo `.env` cho Compose và đặt key riêng trong file đó.
 
 ---
 
@@ -127,7 +129,7 @@ railway up
 railway domain        # nhận public URL
 ```
 
-**Render:** push repo lên GitHub → Render Dashboard → New → Blueprint → chọn repo (Render đọc `render.yaml`) → điền secret → Deploy.
+**Render:** push repo lên GitHub → Render Dashboard → New → Blueprint → chọn repo và đặt Blueprint Path là `06-lab-complete/render.yaml` → nhập `AGENT_API_KEY` → kiểm tra cả hai service dùng plan `free` → Deploy. Blueprint dùng thư mục gốc service `06-lab-complete/`, tạo Agent cùng Redis-compatible Key Value và truyền `REDIS_URL` qua tham chiếu nội bộ.
 
 Sau khi deploy: `python check_production_ready.py --public-url <URL>` và ghi URL vào `DEPLOYMENT.md` (xem [DAY14_DELIVERY_CHECKLIST.md](../DAY14_DELIVERY_CHECKLIST.md)).
 
