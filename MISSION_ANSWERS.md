@@ -294,6 +294,10 @@ Histogram ghi độ dài câu hỏi tại `/ask` sau khi payload hợp lệ, v�
 
 Số liệu tải, phân tích SLO, kết quả eval và cách cấu hình quality gate được trình bày trong [BENCHMARK_REPORT.md](BENCHMARK_REPORT.md).
 
+### Exercise 7.4–7.7: Observability stack
+
+Phân tích dashboard Grafana, đối chiếu trace với log JSON, kết quả thí nghiệm alert và so sánh hiệu năng khi tăng số replica được trình bày trong [BENCHMARK_REPORT.md](BENCHMARK_REPORT.md#4-observability-stack-production).
+
 ## AI log
 
 - **CP1** — Học viên thực hành CP1 trước khi dùng AI. Codex hỗ trợ rà tiêu chí K5, đối chiếu các dòng code minh họa anti-pattern và biên tập bảng so sánh. Trích đoạn HTTP trong báo cáo lấy từ lượt Codex chạy lại hai app mẫu để đối chiếu.
@@ -303,3 +307,4 @@ Số liệu tải, phân tích SLO, kết quả eval và cách cấu hình quali
 - **CP5** — Học viên triển khai Part 6 từ bản khung với sự hỗ trợ của Codex về code và cấu hình theo từng tiêu chí lab. Học viên trực tiếp chạy Compose, kiểm tra health/readiness, API key, input rỗng, rate limit, log JSON và trạng thái khi dừng Redis, sau đó chạy script chấm đầy đủ xác nhận `PASS 12/12`. Codex hỗ trợ giải thích luồng xử lý, chạy đối chiếu và biên tập Part 6 từ kết quả thực hành.
 - **CP6** — Học viên tạo tài khoản Render, thiết lập API key, triển khai Blueprint từ repo đã push, kiểm thử `/ask` có key và chụp ba ảnh bằng chứng. Request trả `HTTP 200` cùng câu trả lời mock. Codex hỗ trợ cấu hình Blueprint, giải thích kết nối Agent/Redis, chạy đối chiếu endpoint và script chấm sau deploy, rà ảnh và biên tập kết quả cùng phần so sánh cấu hình, pipeline Cloud Run. API key được nhập và giữ trên máy học viên.
 - **CP7** — Học viên hoàn thiện bài thực hành đo tải và đánh giá v1/v2 theo lộ trình K5. Hai câu eval chưa đạt là căn cứ để bổ sung kiến thức về JWT và Kubernetes HPA. Lượt kiểm tra lại đạt 23/23, không có regression. Codex hỗ trợ bổ sung histogram và nội dung kiến thức, chạy các script local và đối chiếu số liệu trong báo cáo với JSON gốc.
+- **CP8** — Học viên hoàn thiện bài thực hành observability theo checklist K5. Phần thực hành gồm so sánh tải trên 1 và 3 replica, đối chiếu trace với log và đo thời gian alert chuyển sang firing. Codex hỗ trợ chẩn đoán lỗi nạp thư viện trong image, chạy phép đo trên stack local, chụp giao diện và đối chiếu số liệu với CSV, log JSON và `trace_id`.
