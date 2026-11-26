@@ -274,6 +274,26 @@ Kiểm tra tại CP5 bằng `python check_production_ready.py` trong `06-lab-com
 ================================================================
 ```
 
+## Part 7: Benchmark & Observability
+
+### Exercise 7.1: Metrics
+
+Sau một request `POST /ask` thành công, endpoint `/metrics` ghi nhận:
+
+| Loại | Metric | Quan sát |
+| --- | --- | --- |
+| Counter | `http_requests_total` | Series `method="POST",route="/ask",status="200"` có giá trị `1`. |
+| Gauge | `agent_in_flight_requests` | Giá trị `0` sau khi request hoàn tất. |
+| Histogram | `agent_question_length_chars` | `_count = 1`, `_sum = 40`. Bucket `le="20.0"` có giá trị `0` và `le="50.0"` có giá trị `1`. |
+
+Nếu dùng URL thực làm label, mỗi đường dẫn lạ có thể tạo một time series riêng cho counter và nhiều series cho histogram. Số series tăng theo số đường dẫn, làm tăng chi phí lưu trữ và truy vấn. Dùng route template và gom các đường dẫn không khớp vào `unmatched` giúp giữ số giá trị label ổn định.
+
+Histogram ghi độ dài câu hỏi tại `/ask` sau khi payload hợp lệ, với các bucket cố định từ 20 đến 2.000 ký tự. [Mã nguồn metrics](06-lab-complete/benchmark-observability/develop/app.py)
+
+### Exercise 7.2–7.3: Benchmark local
+
+Số liệu tải, phân tích SLO, kết quả eval và cách cấu hình quality gate được trình bày trong [BENCHMARK_REPORT.md](BENCHMARK_REPORT.md).
+
 ## AI log
 
 - **CP1** — Học viên thực hành CP1 trước khi dùng AI. Codex hỗ trợ rà tiêu chí K5, đối chiếu các dòng code minh họa anti-pattern và biên tập bảng so sánh. Trích đoạn HTTP trong báo cáo lấy từ lượt Codex chạy lại hai app mẫu để đối chiếu.
@@ -282,3 +302,4 @@ Kiểm tra tại CP5 bằng `python check_production_ready.py` trong `06-lab-com
 - **CP4** — Học viên chạy health check, gửi `SIGTERM` khi request đang xử lý, bật stack ba Agent và kiểm tra lịch sử bằng `test_stateless.py`. Codex hỗ trợ đọc mã mẫu, giải thích kết quả và biên tập Part 5 từ output học viên cung cấp. Phép thử dừng một Agent được thực hiện trong lượt đối chiếu riêng của Codex.
 - **CP5** — Học viên triển khai Part 6 từ bản khung với sự hỗ trợ của Codex về code và cấu hình theo từng tiêu chí lab. Học viên trực tiếp chạy Compose, kiểm tra health/readiness, API key, input rỗng, rate limit, log JSON và trạng thái khi dừng Redis, sau đó chạy script chấm đầy đủ xác nhận `PASS 12/12`. Codex hỗ trợ giải thích luồng xử lý, chạy đối chiếu và biên tập Part 6 từ kết quả thực hành.
 - **CP6** — Học viên tạo tài khoản Render, thiết lập API key, triển khai Blueprint từ repo đã push, kiểm thử `/ask` có key và chụp ba ảnh bằng chứng. Request trả `HTTP 200` cùng câu trả lời mock. Codex hỗ trợ cấu hình Blueprint, giải thích kết nối Agent/Redis, chạy đối chiếu endpoint và script chấm sau deploy, rà ảnh và biên tập kết quả cùng phần so sánh cấu hình, pipeline Cloud Run. API key được nhập và giữ trên máy học viên.
+- **CP7** — Học viên hoàn thiện bài thực hành đo tải và đánh giá v1/v2 theo lộ trình K5. Hai câu eval chưa đạt là căn cứ để bổ sung kiến thức về JWT và Kubernetes HPA. Lượt kiểm tra lại đạt 23/23, không có regression. Codex hỗ trợ bổ sung histogram và nội dung kiến thức, chạy các script local và đối chiếu số liệu trong báo cáo với JSON gốc.
